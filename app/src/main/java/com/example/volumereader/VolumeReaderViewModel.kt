@@ -18,6 +18,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.roundToInt
+
 
 sealed interface UpdateState {
     object Idle : UpdateState
@@ -36,11 +38,14 @@ class VolumeReaderViewModel(application: Application) : AndroidViewModel(applica
     private val _selectedModel = MutableStateFlow(CalibrationLogic.defaultModel)
     val selectedModel: StateFlow<PhoneModel> = _selectedModel.asStateFlow()
 
-    // Current version in app. Hardcoded to match our v2.3.0 release.
-    val currentVersion = "v2.3.0"
+    // Current version in app. Hardcoded to match our v2.4.0 release.
+    val currentVersion = "v2.4.0"
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    private val _autoDetectStatus = MutableStateFlow<String?>(null)
+    val autoDetectStatus: StateFlow<String?> = _autoDetectStatus.asStateFlow()
 
     init {
         // Auto-detect device and select matching calibration profile
@@ -54,6 +59,22 @@ class VolumeReaderViewModel(application: Application) : AndroidViewModel(applica
     fun selectModel(model: PhoneModel) {
         _selectedModel.value = model
         audioEngine.calibrationOffset = model.offset
+        _autoDetectStatus.value = null // reset status on manual selection
+    }
+
+    fun autoDetectDevice() {
+        val detected = CalibrationLogic.autoDetect()
+        if (detected != null) {
+            selectModel(detected)
+            _autoDetectStatus.value = "SUCCESS: Matched ${detected.displayName} (${detected.offset.roundToInt()} dB offset applied)"
+        } else {
+            selectModel(CalibrationLogic.defaultModel)
+            _autoDetectStatus.value = "GENERIC: No profile matched. Default offset (85 dB) applied."
+        }
+    }
+
+    fun clearAutoDetectStatus() {
+        _autoDetectStatus.value = null
     }
 
     fun startRecording() {
