@@ -51,6 +51,7 @@ import com.example.volumereader.health.HealthLogic
 import com.example.volumereader.theme.*
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 enum class Screen {
@@ -1336,4 +1337,3 @@ fun PermissionScreen(onRequestPermission: () -> Unit) {
     }
 }
 
-private fun Float.roundToInt(): Int = kotlin.math.roundToInt(this.toDouble()).toInt()
