@@ -95,12 +95,22 @@ object CalibrationLogic {
         PhoneModel("Xiaomi", "13T Pro", 83f, "Low"),
         PhoneModel("Xiaomi", "13T", 84f, "Low"),
         PhoneModel("Xiaomi", "12 Pro", 83f, "Medium"),
-        PhoneModel("Xiaomi", "Redmi Note 13 Pro", 87f, "Low"),
-        PhoneModel("Xiaomi", "Redmi Note 13", 88f, "Low"),
-        PhoneModel("Xiaomi", "Redmi Note 12 Pro", 87f, "Low"),
         PhoneModel("Xiaomi", "POCO F6", 84f, "Low"),
         PhoneModel("Xiaomi", "POCO F5", 85f, "Low"),
         PhoneModel("Xiaomi", "POCO X6 Pro", 85f, "Low"),
+
+        // ── Redmi ────────────────────────────────────────────────
+        PhoneModel("Redmi", "Note 15 Pro 5G", 84f, "Low"),
+        PhoneModel("Redmi", "Note 15 Pro", 84f, "Low"),
+        PhoneModel("Redmi", "Note 14 Pro 5G", 85f, "Low"),
+        PhoneModel("Redmi", "Note 14 Pro", 85f, "Low"),
+        PhoneModel("Redmi", "Note 13 Pro 5G", 86f, "Low"),
+        PhoneModel("Redmi", "Note 13 Pro", 86f, "Low"),
+        PhoneModel("Redmi", "Note 13", 87f, "Low"),
+        PhoneModel("Redmi", "Note 12 Pro", 87f, "Low"),
+        PhoneModel("Redmi", "13C", 88f, "Low"),
+        PhoneModel("Redmi", "12", 88f, "Low"),
+
 
         // ── OPPO ─────────────────────────────────────────────────
         PhoneModel("OPPO", "Find X7 Ultra", 83f, "Low"),
