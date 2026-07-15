@@ -2,6 +2,7 @@ package com.example.volumereader
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,10 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -112,6 +110,66 @@ class MainActivity : ComponentActivity() {
                 requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CUSTOM CANVAS ICONS (Machine/Industrial Style)
+// ═══════════════════════════════════════════════════════════════════════
+
+@Composable
+fun SettingsIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = size.width * 0.22f
+        
+        // Draw 8 gear teeth
+        for (i in 0 until 8) {
+            val angle = i * PI / 4.0
+            val x1 = cx + (r * 1.5f) * cos(angle).toFloat()
+            val y1 = cy + (r * 1.5f) * sin(angle).toFloat()
+            drawCircle(color, radius = size.width * 0.08f, center = Offset(x1, y1))
+        }
+        
+        // Draw inner concentric rings
+        drawCircle(color, radius = r * 1.3f, style = Stroke(width = 2.5.dp.toPx()))
+        drawCircle(color, radius = r * 0.4f)
+    }
+}
+
+@Composable
+fun SearchIcon(modifier: Modifier = Modifier, color: Color = TextSecondary) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val r = size.width * 0.22f
+        val cx = size.width * 0.42f
+        val cy = size.height * 0.42f
+        
+        // Lens
+        drawCircle(color, radius = r, style = Stroke(width = 2.dp.toPx()))
+        
+        // Handle
+        val angle = PI / 4.0
+        val x1 = cx + r * cos(angle).toFloat()
+        val y1 = cy + r * sin(angle).toFloat()
+        val x2 = size.width * 0.82f
+        val y2 = size.height * 0.82f
+        drawLine(color, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+fun BackIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        
+        // Arrow shaft
+        drawLine(color, start = Offset(w * 0.75f, h * 0.5f), end = Offset(w * 0.25f, h * 0.5f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+        
+        // Arrow head
+        drawLine(color, start = Offset(w * 0.25f, h * 0.5f), end = Offset(w * 0.48f, h * 0.27f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(color, start = Offset(w * 0.25f, h * 0.5f), end = Offset(w * 0.48f, h * 0.73f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
     }
 }
 
@@ -295,11 +353,7 @@ fun SettingsScreen(
             contentAlignment = Alignment.CenterStart
         ) {
             IconButton(onClick = onNavigateToMain) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = HoloBlue
-                )
+                BackIcon(color = HoloBlue)
             }
             Text(
                 text = "SYSTEM SETTINGS",
@@ -607,7 +661,7 @@ fun SearchableDeviceDialog(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search phone models...", color = TextDim) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary) },
+                    leadingIcon = { SearchIcon(color = TextSecondary) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
@@ -725,11 +779,7 @@ fun HeaderPanel(onNavigateToSettings: () -> Unit) {
                 onClick = onNavigateToSettings,
                 modifier = Modifier.size(48.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = HoloBlue
-                )
+                SettingsIcon(color = HoloBlue)
             }
         }
     }
