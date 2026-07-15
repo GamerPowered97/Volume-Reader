@@ -53,6 +53,10 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+enum class Screen {
+    Main, Settings
+}
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: VolumeReaderViewModel by viewModels()
@@ -410,7 +414,12 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        MachinePanel {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .machinePanelBackground()
+                .padding(8.dp)
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -490,7 +499,12 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        MachinePanel {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .machinePanelBackground()
+                .padding(8.dp)
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -868,7 +882,7 @@ private fun ArcGauge(
             )
         }
 
-        // Minor ticks
+        // Minor Ticks
         for (tickDb in 30..130 step 5) {
             if (tickDb % 10 == 0) continue
             val tickFrac = ((tickDb - 30f) / 100f)
