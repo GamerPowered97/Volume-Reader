@@ -14,10 +14,23 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("releaseConfig") {
+            storeFile = file("signing-key.jks")
+            storePassword = "volumereader"
+            keyAlias = "volumereader"
+            keyPassword = "volumereader"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("releaseConfig")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("releaseConfig")
         }
     }
     compileOptions {
