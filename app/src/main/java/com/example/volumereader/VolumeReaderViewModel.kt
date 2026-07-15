@@ -36,8 +36,8 @@ class VolumeReaderViewModel(application: Application) : AndroidViewModel(applica
     private val _selectedModel = MutableStateFlow(CalibrationLogic.defaultModel)
     val selectedModel: StateFlow<PhoneModel> = _selectedModel.asStateFlow()
 
-    // Current version in app. Hardcoded to match our v2.1.0 release.
-    val currentVersion = "v2.1.0"
+    // Current version in app. Hardcoded to match our v2.3.0 release.
+    val currentVersion = "v2.3.0"
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()

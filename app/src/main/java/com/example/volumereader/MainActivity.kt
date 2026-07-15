@@ -25,13 +25,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -50,12 +51,7 @@ import com.example.volumereader.health.HealthLogic
 import com.example.volumereader.theme.*
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
-
-enum class Screen {
-    Main, Settings
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -113,9 +109,26 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// CUSTOM CANVAS ICONS (Machine/Industrial Style)
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+//  Shared drawing decorators/helpers
+// ═════════════════════════════════════════════════════════════════════════════
+
+private fun Modifier.machinePanelBackground(): Modifier = this
+    .background(
+        brush = Brush.verticalGradient(
+            colors = listOf(MetalLight, MetalMid, MetalDark, MetalMid)
+        ),
+        shape = CutCornerShape(6.dp)
+    )
+    .border(1.dp, MachineRidge, CutCornerShape(6.dp))
+
+private fun Modifier.lcdWell(): Modifier = this
+    .background(LcdBackground, CutCornerShape(4.dp))
+    .border(1.5.dp, LcdBezel, CutCornerShape(4.dp))
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Custom Canvas-drawn Industrial Icons (no external dependencies)
+// ═════════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun SettingsIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
@@ -124,7 +137,6 @@ fun SettingsIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
         val cy = size.height / 2f
         val r = size.width * 0.22f
         
-        // Draw 8 gear teeth
         for (i in 0 until 8) {
             val angle = i * PI / 4.0
             val x1 = cx + (r * 1.5f) * cos(angle).toFloat()
@@ -132,7 +144,6 @@ fun SettingsIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
             drawCircle(color, radius = size.width * 0.08f, center = Offset(x1, y1))
         }
         
-        // Draw inner concentric rings
         drawCircle(color, radius = r * 1.3f, style = Stroke(width = 2.5.dp.toPx()))
         drawCircle(color, radius = r * 0.4f)
     }
@@ -145,10 +156,8 @@ fun SearchIcon(modifier: Modifier = Modifier, color: Color = TextSecondary) {
         val cx = size.width * 0.42f
         val cy = size.height * 0.42f
         
-        // Lens
         drawCircle(color, radius = r, style = Stroke(width = 2.dp.toPx()))
         
-        // Handle
         val angle = PI / 4.0
         val x1 = cx + r * cos(angle).toFloat()
         val y1 = cy + r * sin(angle).toFloat()
@@ -164,20 +173,17 @@ fun BackIcon(modifier: Modifier = Modifier, color: Color = HoloBlue) {
         val w = size.width
         val h = size.height
         
-        // Arrow shaft
         drawLine(color, start = Offset(w * 0.75f, h * 0.5f), end = Offset(w * 0.25f, h * 0.5f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         
-        // Arrow head
         drawLine(color, start = Offset(w * 0.25f, h * 0.5f), end = Offset(w * 0.48f, h * 0.27f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         drawLine(color, start = Offset(w * 0.25f, h * 0.5f), end = Offset(w * 0.48f, h * 0.73f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+//  Main Screen
+// ═════════════════════════════════════════════════════════════════════════════
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: VolumeReaderViewModel,
@@ -189,106 +195,139 @@ fun MainScreen(
     val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
     val healthAdvice = HealthLogic.getAdviceForDb(dbSpl)
 
-    // Animate the dB value for smooth gauge movement
+    // Smooth the needle with a spring for physical feedback
     val animatedDb by animateFloatAsState(
         targetValue = if (isRecording) dbSpl else 0f,
-        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "dbAnimation"
     )
 
     val statusColor by animateColorAsState(
-        targetValue = if (isRecording) healthAdvice.statusColor else TextDim,
-        animationSpec = tween(300),
+        targetValue = if (isRecording) healthAdvice.color else TextDim,
+        animationSpec = tween(400),
         label = "statusColor"
     )
 
-    // Pulsing glow for danger states
+    // Pulsing glow for warning/danger states
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
+            animation = tween(600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseAlpha"
     )
 
+    // Scanline animation offset for the LCD digital readout
+    val scanlineOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "scanline"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MachineDark)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(MachineDark, Color(0xFF0E0E12), MachineDark)
+                )
+            )
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // ── HEADER BAR ─────────────────────────────────────────────
+        // ── 1. HEADER BAR ────────────────────────────────────────────────
         HeaderPanel(onNavigateToSettings = onNavigateToSettings)
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Active Device Status Line
+        // ── 2. ACTIVE PROFILE STATUS LINE ────────────────────────────────
         Text(
             text = "PROFILE: ${selectedModel.displayName.uppercase()} (OFFSET: ${viewModel.audioEngine.calibrationOffset.roundToInt()} dB)",
             color = TextSecondary,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 4.dp),
             textAlign = TextAlign.Start
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── ARC GAUGE ──────────────────────────────────────────────
-        MachinePanel {
+        // ── 3. ARC GAUGE (Canvas-drawn) ──────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.55f)
+                .machinePanelBackground()
+                .padding(2.dp)
+        ) {
             ArcGauge(
                 dbValue = animatedDb,
-                maxDb = 130f,
-                accentColor = if (isRecording) healthAdvice.color else MachineBezel,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1.6f)
+                isRecording = isRecording,
+                statusColor = statusColor,
+                pulseAlpha = pulseAlpha
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // ── DIGITAL READOUT ────────────────────────────────────────
-        LcdPanel(
-            dbValue = if (isRecording) animatedDb else null,
-            accentColor = if (isRecording) healthAdvice.color else MachineBezel,
-            pulseAlpha = if (isRecording && healthAdvice.severity >= 3) pulseAlpha else 1f
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // ── LED BAR GRAPH ──────────────────────────────────────────
-        MachinePanel {
-            LedBarGraph(
-                dbValue = animatedDb,
-                maxDb = 130f,
-                isActive = isRecording,
+        // ── 4. LED BAR + DIGITAL READOUT (Side-by-side) ──────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(84.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // LED Segmented Bar Graph
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(32.dp)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .machinePanelBackground()
+                    .padding(6.dp)
+            ) {
+                LedBarGraph(
+                    dbValue = animatedDb,
+                    isRecording = isRecording
+                )
+            }
+
+            // Digital Readout Well
+            Box(
+                modifier = Modifier
+                    .width(135.dp)
+                    .fillMaxHeight()
+                    .machinePanelBackground()
+                    .padding(4.dp)
+            ) {
+                DigitalReadout(
+                    dbValue = animatedDb,
+                    isRecording = isRecording,
+                    statusColor = statusColor,
+                    scanlineOffset = scanlineOffset
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // ── STATUS / HEALTH PANEL ──────────────────────────────────
+        // ── 5. STATUS / HEALTH INFO PANEL (Wraps content naturally) ─────
         StatusPanel(
             isRecording = isRecording,
             healthAdvice = healthAdvice,
             statusColor = statusColor,
-            pulseAlpha = if (healthAdvice.severity >= 3 && isRecording) pulseAlpha else 1f
+            pulseAlpha = pulseAlpha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
         )
 
-        // ── ERROR MESSAGE ──────────────────────────────────────────
+        // ── ERROR MESSAGE ──────────────────────────────────────────────
         errorMsg?.let { msg ->
-            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "⚠ $msg",
                 color = HoloRed,
@@ -301,22 +340,20 @@ fun MainScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── CONTROL BUTTONS ────────────────────────────────────────
+        // ── 6. ENGAGE CONTROL BUTTON ─────────────────────────────────────
         ControlButton(
             isRecording = isRecording,
             onStart = { viewModel.startRecording() },
             onStop = { viewModel.stopRecording() }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SETTINGS SCREEN
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+//  Settings Screen
+// ═════════════════════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -336,9 +373,10 @@ fun SettingsScreen(
             .background(MachineDark)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── SETTINGS HEADER ────────────────────────────────────────
+        // ── HEADER ────────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -364,18 +402,19 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // ── SECTION 1: CALIBRATION ─────────────────────────────────
+        // ── CALIBRATION SECTION ──────────────────────────────────
         Text(
             text = "AUDIO CALIBRATION",
             style = MaterialTheme.typography.labelLarge,
             color = HoloBlueDim,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            modifier = Modifier.fillMaxWidth()
         )
 
         MachinePanel {
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
                     text = "Phone Calibration Profile",
                     style = MaterialTheme.typography.titleMedium,
@@ -384,18 +423,15 @@ fun SettingsScreen(
                 Text(
                     text = "Selecting your device applies a known hardware offset to provide accurate dBA / dBSPL measurements.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    color = TextSecondary
                 )
                 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Clicking this button opens the Searchable Dialog (no lag!)
+                // Dialog Trigger Button (Zero Lag)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MachineDark, CutCornerShape(4.dp))
-                        .border(1.dp, MachineRidge, CutCornerShape(4.dp))
+                        .border(1.5.dp, MachineRidge, CutCornerShape(4.dp))
                         .clickable { showDialog = true }
                         .padding(14.dp)
                 ) {
@@ -410,18 +446,18 @@ fun SettingsScreen(
                             color = HoloBlue
                         )
                         Text(
-                            text = "CHANGE",
+                            text = "SELECT PROFILE",
                             style = MaterialTheme.typography.labelLarge,
                             color = TextSecondary
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Manual offset adjustment
+                // Manual Slider
                 Text(
-                    text = "Manual Offset: ${tempOffset.roundToInt()} dB",
+                    text = "Manual Offset Tuning: ${tempOffset.roundToInt()} dB",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary
                 )
@@ -446,18 +482,19 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // ── SECTION 2: SYSTEM UPDATES ──────────────────────────────
+        // ── AUTO UPDATES SECTION ─────────────────────────────────
         Text(
             text = "SYSTEM UPDATES",
             style = MaterialTheme.typography.labelLarge,
             color = HoloBlueDim,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            modifier = Modifier.fillMaxWidth()
         )
 
         MachinePanel {
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -475,8 +512,6 @@ fun SettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
                 when (updateState) {
                     is UpdateState.Idle -> {
                         Button(
@@ -490,7 +525,7 @@ fun SettingsScreen(
                     }
                     is UpdateState.Checking -> {
                         Text(
-                            text = "Checking GitHub for updates...",
+                            text = "Querying latest releases from GitHub...",
                             color = HoloBlue,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.fillMaxWidth(),
@@ -511,14 +546,13 @@ fun SettingsScreen(
                     }
                     is UpdateState.UpdateAvailable -> {
                         val state = updateState as UpdateState.UpdateAvailable
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "New Version Available: ${state.version}",
                                 color = HoloOrange,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Button(
                                 onClick = { viewModel.downloadAndInstallUpdate(state.downloadUrl) },
                                 shape = CutCornerShape(4.dp),
@@ -531,13 +565,12 @@ fun SettingsScreen(
                     }
                     is UpdateState.Downloading -> {
                         val progress = (updateState as UpdateState.Downloading).progress
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "Downloading Update: ${(progress * 100).roundToInt()}%",
                                 color = HoloBlue,
                                 style = MaterialTheme.typography.bodyMedium
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
                             LinearProgressIndicator(
                                 progress = progress,
                                 color = HoloBlue,
@@ -548,7 +581,7 @@ fun SettingsScreen(
                     }
                     is UpdateState.ReadyToInstall -> {
                         Text(
-                            text = "Launching system package installer...",
+                            text = "Launching Android package installer...",
                             color = GaugeGreen,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.fillMaxWidth(),
@@ -557,13 +590,12 @@ fun SettingsScreen(
                     }
                     is UpdateState.Error -> {
                         val msg = (updateState as UpdateState.Error).message
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "Update Error: $msg",
                                 color = HoloRed,
                                 style = MaterialTheme.typography.bodyMedium
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Button(
                                 onClick = { viewModel.checkForUpdates() },
                                 shape = CutCornerShape(4.dp),
@@ -578,9 +610,7 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Device system information
+        // ── SYSTEM INFO SECTION ──────────────────────────────────
         Text(
             text = "SYSTEM INFO",
             style = MaterialTheme.typography.labelSmall,
@@ -591,11 +621,10 @@ fun SettingsScreen(
             text = "BUILD MANUFACTURER: ${Build.MANUFACTURER}\nBUILD MODEL: ${Build.MODEL}",
             style = MaterialTheme.typography.bodySmall,
             color = TextDim,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 
-    // Searchable Dialog for smooth device selection
     if (showDialog) {
         SearchableDeviceDialog(
             currentSelected = selectedModel,
@@ -609,9 +638,9 @@ fun SettingsScreen(
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SEARCHABLE DEVICE DIALOG (Fixes Dropdown Lag)
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+//  Searchable Device Dialog (Fixes Dropdown Lag)
+// ═════════════════════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -622,7 +651,6 @@ fun SearchableDeviceDialog(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     
-    // Filter models on search query
     val filteredModels = remember(searchQuery) {
         if (searchQuery.isBlank()) {
             CalibrationLogic.knownModels
@@ -656,7 +684,6 @@ fun SearchableDeviceDialog(
                     textAlign = TextAlign.Center
                 )
 
-                // Search field
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -677,7 +704,6 @@ fun SearchableDeviceDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Scrollable LazyColumn for instant rendering (zero lag)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -724,7 +750,6 @@ fun SearchableDeviceDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Dismiss button
                 Button(
                     onClick = onDismiss,
                     shape = CutCornerShape(4.dp),
@@ -738,23 +763,427 @@ fun SearchableDeviceDialog(
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// OTHER COMPONENTS
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+//  Visual Sub-Components (Gauges, Digital Display, Status)
+// ═════════════════════════════════════════════════════════════════════════════
 
 @Composable
-fun HeaderPanel(onNavigateToSettings: () -> Unit) {
+private fun ArcGauge(
+    dbValue: Float,
+    isRecording: Boolean,
+    statusColor: Color,
+    pulseAlpha: Float
+) {
+    val textMeasurer = rememberTextMeasurer()
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h * 0.88f
+        val outerRadius = minOf(w, h) * 0.46f
+        val innerRadius = outerRadius * 0.72f
+        val needleLen   = outerRadius * 0.92f
+
+        val startAngle = 200f
+        val sweepAngle = 140f
+        val clampedDb  = dbValue.coerceIn(30f, 130f)
+        val fraction   = ((clampedDb - 30f) / 100f).coerceIn(0f, 1f)
+        val needleAngleDeg = startAngle + fraction * sweepAngle
+
+        // Outer bezel ring
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(MachineRidge, MachineBezel, MachineSurface),
+                center = Offset(cx, cy),
+                radius = outerRadius * 1.12f
+            ),
+            radius = outerRadius * 1.08f,
+            center = Offset(cx, cy)
+        )
+
+        // Dark face
+        drawCircle(
+            color = LcdBackground,
+            radius = outerRadius * 1.02f,
+            center = Offset(cx, cy)
+        )
+
+        // Coloured arc segments (green → yellow → orange → red)
+        val arcStroke = outerRadius - innerRadius
+        val segments = listOf(
+            Pair(0f to 0.40f, GaugeGreen),
+            Pair(0.40f to 0.60f, GaugeYellow),
+            Pair(0.60f to 0.80f, GaugeOrange),
+            Pair(0.80f to 1.0f, GaugeRed)
+        )
+
+        segments.forEach { (range, color) ->
+            val (segStart, segEnd) = range
+            drawArc(
+                color = if (isRecording) color else color.copy(alpha = 0.15f),
+                startAngle = startAngle + segStart * sweepAngle,
+                sweepAngle = (segEnd - segStart) * sweepAngle,
+                useCenter = false,
+                topLeft = Offset(cx - outerRadius, cy - outerRadius),
+                size = Size(outerRadius * 2, outerRadius * 2),
+                style = Stroke(width = arcStroke * 0.35f, cap = StrokeCap.Butt)
+            )
+        }
+
+        // Ticks
+        val majorTicks = listOf(30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130)
+        majorTicks.forEach { tickDb ->
+            val tickFrac = ((tickDb - 30f) / 100f).coerceIn(0f, 1f)
+            val angleDeg = startAngle + tickFrac * sweepAngle
+            val angleRad = Math.toRadians(angleDeg.toDouble())
+            val cos = cos(angleRad).toFloat()
+            val sin = sin(angleRad).toFloat()
+
+            val outerTick = outerRadius * 0.98f
+            val innerTick = outerRadius * 0.88f
+            val labelR     = outerRadius * 0.78f
+
+            drawLine(
+                color = if (isRecording) TextPrimary else TextDim,
+                start = Offset(cx + cos * innerTick, cy + sin * innerTick),
+                end = Offset(cx + cos * outerTick, cy + sin * outerTick),
+                strokeWidth = if (tickDb % 20 == 0) 3f else 1.5f,
+                cap = StrokeCap.Butt
+            )
+
+            val style = TextStyle(
+                color = if (isRecording) TextSecondary else TextDim,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium
+            )
+            val measured = textMeasurer.measure(tickDb.toString(), style)
+            drawText(
+                textLayoutResult = measured,
+                topLeft = Offset(
+                    cx + cos * labelR - measured.size.width / 2f,
+                    cy + sin * labelR - measured.size.height / 2f
+                )
+            )
+        }
+
+        // Minor ticks
+        for (tickDb in 30..130 step 5) {
+            if (tickDb % 10 == 0) continue
+            val tickFrac = ((tickDb - 30f) / 100f)
+            val angleDeg = startAngle + tickFrac * sweepAngle
+            val angleRad = Math.toRadians(angleDeg.toDouble())
+            val cos = cos(angleRad).toFloat()
+            val sin = sin(angleRad).toFloat()
+            drawLine(
+                color = if (isRecording) TextDim else TextDim.copy(alpha = 0.3f),
+                start = Offset(cx + cos * outerRadius * 0.93f, cy + sin * outerRadius * 0.93f),
+                end = Offset(cx + cos * outerRadius * 0.98f, cy + sin * outerRadius * 0.98f),
+                strokeWidth = 1f,
+                cap = StrokeCap.Butt
+            )
+        }
+
+        // Glow behind needle when danger/warning
+        if (isRecording && dbValue >= 85f) {
+            val needleRad = Math.toRadians(needleAngleDeg.toDouble())
+            val tipX = cx + cos(needleRad).toFloat() * needleLen * 0.8f
+            val tipY = cy + sin(needleRad).toFloat() * needleLen * 0.8f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(statusColor.copy(alpha = 0.35f * pulseAlpha), Color.Transparent),
+                    center = Offset(tipX, tipY),
+                    radius = outerRadius * 0.35f
+                ),
+                radius = outerRadius * 0.35f,
+                center = Offset(tipX, tipY)
+            )
+        }
+
+        // Needle
+        if (isRecording) {
+            val needleRad = Math.toRadians(needleAngleDeg.toDouble())
+            val tipX = cx + cos(needleRad).toFloat() * needleLen
+            val tipY = cy + sin(needleRad).toFloat() * needleLen
+
+            drawLine(
+                color = Color.Black.copy(alpha = 0.5f),
+                start = Offset(cx + 2, cy + 2),
+                end = Offset(tipX + 2, tipY + 2),
+                strokeWidth = 5f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = HoloRedBright,
+                start = Offset(cx, cy),
+                end = Offset(tipX, tipY),
+                strokeWidth = 3.5f,
+                cap = StrokeCap.Round
+            )
+            drawCircle(color = HoloRedBright, radius = 4f, center = Offset(tipX, tipY))
+        }
+
+        // Center hub
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(MachineHighlight, MachineBezel, MachineDark),
+                center = Offset(cx, cy),
+                radius = 18f
+            ),
+            radius = 14f,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            color = if (isRecording) HoloRedBright else TextDim,
+            radius = 5f,
+            center = Offset(cx, cy)
+        )
+
+        // Units label
+        val unitStyle = TextStyle(
+            color = if (isRecording) HoloBlue else TextDim,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp
+        )
+        val unitMeasured = textMeasurer.measure("dB SPL", unitStyle)
+        drawText(
+            textLayoutResult = unitMeasured,
+            topLeft = Offset(
+                cx - unitMeasured.size.width / 2f,
+                cy - outerRadius * 0.35f
+            )
+        )
+    }
+}
+
+@Composable
+private fun LedBarGraph(
+    dbValue: Float,
+    isRecording: Boolean
+) {
+    Canvas(modifier = Modifier.fillMaxSize().lcdWell()) {
+        val totalSegments = 40
+        val segWidth = size.width / totalSegments
+        val gap = 2f
+        val clampedDb = dbValue.coerceIn(30f, 130f)
+        val litSegments = if (isRecording) {
+            ((clampedDb - 30f) / 100f * totalSegments).toInt().coerceIn(0, totalSegments)
+        } else 0
+
+        for (i in 0 until totalSegments) {
+            val frac = i.toFloat() / totalSegments
+            val segColor = when {
+                frac < 0.40f -> GaugeGreen
+                frac < 0.60f -> GaugeYellow
+                frac < 0.80f -> GaugeOrange
+                else         -> GaugeRed
+            }
+
+            val isLit = i < litSegments
+            val color = if (isLit) segColor else SegmentOff
+
+            val left = i * segWidth + gap / 2
+            val barHeight = size.height * (0.5f + 0.5f * frac)
+            val top = (size.height - barHeight) / 2f
+
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(left, top),
+                size = Size(segWidth - gap, barHeight),
+                cornerRadius = CornerRadius(1f, 1f)
+            )
+
+            if (isLit && frac > 0.6f) {
+                drawRoundRect(
+                    color = segColor.copy(alpha = 0.3f),
+                    topLeft = Offset(left - 1, top - 1),
+                    size = Size(segWidth - gap + 2, barHeight + 2),
+                    cornerRadius = CornerRadius(2f, 2f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DigitalReadout(
+    dbValue: Float,
+    isRecording: Boolean,
+    statusColor: Color,
+    scanlineOffset: Float
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .lcdWell()
+            .drawBehind {
+                val lineSpacing = 4f
+                val totalLines = (size.height / lineSpacing).toInt()
+                val offset = scanlineOffset * lineSpacing
+                for (i in 0..totalLines) {
+                    val y = i * lineSpacing + offset
+                    if (y <= size.height) {
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.02f),
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1f
+                        )
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = if (isRecording) "${dbValue.roundToInt()}" else "--",
+                style = MaterialTheme.typography.displayMedium,
+                color = if (isRecording) statusColor else TextDim,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "dB SPL",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (isRecording) HoloBlue else TextDim,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusPanel(
+    isRecording: Boolean,
+    healthAdvice: com.example.volumereader.health.HealthAdvice,
+    statusColor: Color,
+    pulseAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .machinePanelBackground()
+            .padding(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(modifier = Modifier.size(12.dp)) {
+                        if (isRecording) {
+                            drawCircle(
+                                color = statusColor.copy(alpha = 0.4f * pulseAlpha),
+                                radius = size.minDimension / 1.5f
+                            )
+                        }
+                        drawCircle(
+                            color = if (isRecording) statusColor else TextDim,
+                            radius = size.minDimension / 2.8f
+                        )
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.25f),
+                            radius = size.minDimension / 8f,
+                            center = Offset(size.width * 0.38f, size.height * 0.35f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isRecording) "● MONITORING" else "○ STANDBY",
+                        color = if (isRecording) statusColor else TextDim,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = if (isRecording) statusColor.copy(alpha = 0.15f) else Color.Transparent,
+                            shape = CutCornerShape(3.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (isRecording) statusColor.copy(alpha = 0.5f) else MachineRidge,
+                            CutCornerShape(3.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isRecording) healthAdvice.effect.uppercase() else "INACTIVE",
+                        color = if (isRecording) statusColor else TextDim,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, MachineRidge, MachineHighlight, MachineRidge, Color.Transparent)
+                        )
+                    )
+            )
+
+            Text(
+                text = if (isRecording) healthAdvice.advice
+                       else "Engage acoustic monitoring to begin real-time sound pressure level analysis.",
+                color = TextPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (isRecording) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .background(LcdBackground, CutCornerShape(2.dp))
+                            .border(1.dp, MachineBezel, CutCornerShape(2.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(text = "NIOSH LIMIT", style = MaterialTheme.typography.labelSmall, color = TextDim)
+                        Text(text = healthAdvice.nioshLimit, style = MaterialTheme.typography.labelLarge, color = HoloBlue)
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .background(LcdBackground, CutCornerShape(2.dp))
+                            .border(1.dp, MachineBezel, CutCornerShape(2.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(text = "OSHA LIMIT", style = MaterialTheme.typography.labelSmall, color = TextDim)
+                        Text(text = healthAdvice.oshaLimit, style = MaterialTheme.typography.labelLarge, color = HoloBlue)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeaderPanel(onNavigateToSettings: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(MetalLight, MetalMid, MetalDark)
-                ),
-                shape = CutCornerShape(6.dp)
-            )
-            .border(1.dp, MachineRidge, CutCornerShape(6.dp))
-            .padding(vertical = 8.dp, horizontal = 12.dp),
+            .machinePanelBackground()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -762,15 +1191,15 @@ fun HeaderPanel(onNavigateToSettings: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.size(48.dp)) // Equalizer spacer
+            Spacer(modifier = Modifier.size(48.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "ACOUSTIC  SAFETY  MONITOR",
+                    text = "ACOUSTIC SAFETY MONITOR",
                     color = HoloBlue,
                     style = MaterialTheme.typography.titleLarge
                 )
                 Text(
-                    text = "MODEL ASM-7700 · REV 2.2",
+                    text = "MODEL ASM-7700  ·  REV 2.3",
                     color = TextDim,
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -786,319 +1215,7 @@ fun HeaderPanel(onNavigateToSettings: () -> Unit) {
 }
 
 @Composable
-fun MachinePanel(content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(MetalMid, MetalDark, MachineSurface)
-                ),
-                shape = CutCornerShape(4.dp)
-            )
-            .border(1.dp, MachineRidge, CutCornerShape(4.dp))
-            .padding(8.dp)
-    ) {
-        content()
-    }
-}
-
-@Composable
-fun LcdPanel(dbValue: Float?, accentColor: Color, pulseAlpha: Float) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(130.dp)
-            .background(LcdBackground, CutCornerShape(4.dp))
-            .border(2.dp, LcdBezel, CutCornerShape(4.dp))
-            .drawBehind {
-                drawRoundRect(
-                    color = accentColor.copy(alpha = 0.08f * pulseAlpha),
-                    cornerRadius = CornerRadius(4.dp.toPx())
-                )
-            }
-            .padding(vertical = 12.dp, horizontal = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = if (dbValue != null) "${dbValue.roundToInt()}" else "--",
-                style = MaterialTheme.typography.displayLarge,
-                color = accentColor.copy(alpha = pulseAlpha)
-            )
-            Text(
-                text = "dB SPL",
-                style = MaterialTheme.typography.labelLarge,
-                color = accentColor.copy(alpha = 0.6f)
-            )
-        }
-    }
-}
-
-// ── ARC GAUGE (Canvas-drawn) ─────────────────────────────────────────
-
-@Composable
-fun ArcGauge(
-    dbValue: Float,
-    maxDb: Float,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    val textMeasurer = rememberTextMeasurer()
-
-    Canvas(modifier = modifier) {
-        val centerX = size.width / 2f
-        val centerY = size.height * 0.85f
-        val radius = size.width * 0.42f
-        val strokeWidth = size.width * 0.025f
-
-        val startAngle = 200f
-        val sweepAngle = 140f
-
-        // Background arc (track)
-        drawArc(
-            color = MachineBezel,
-            startAngle = startAngle,
-            sweepAngle = sweepAngle,
-            useCenter = false,
-            topLeft = Offset(centerX - radius, centerY - radius),
-            size = Size(radius * 2, radius * 2),
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
-        )
-
-        // Draw colored segments
-        val segments = listOf(
-            Pair(0f to 0.54f, GaugeGreen),     // 0-70 dB
-            Pair(0.54f to 0.65f, GaugeYellow),  // 70-85
-            Pair(0.65f to 0.77f, GaugeOrange),  // 85-100
-            Pair(0.77f to 1f, GaugeRed)          // 100-130
-        )
-
-        val progress = (dbValue / maxDb).coerceIn(0f, 1f)
-
-        for ((range, color) in segments) {
-            val segStart = range.first
-            val segEnd = range.second
-            if (progress > segStart) {
-                val segProgress = ((progress - segStart) / (segEnd - segStart)).coerceIn(0f, 1f)
-                val segSweep = (segEnd - segStart) * sweepAngle
-                drawArc(
-                    color = color,
-                    startAngle = startAngle + segStart * sweepAngle,
-                    sweepAngle = segSweep * segProgress,
-                    useCenter = false,
-                    topLeft = Offset(centerX - radius, centerY - radius),
-                    size = Size(radius * 2, radius * 2),
-                    style = Stroke(width = strokeWidth * 1.5f, cap = StrokeCap.Butt)
-                )
-            }
-        }
-
-        // Tick marks
-        val tickCount = 13  // 0, 10, 20 ... 120
-        for (i in 0..tickCount) {
-            val tickAngle = startAngle + (i.toFloat() / tickCount) * sweepAngle
-            val angleRad = tickAngle * PI.toFloat() / 180f
-            val isMajor = i % 2 == 0
-            val tickLen = if (isMajor) radius * 0.12f else radius * 0.06f
-            val outerR = radius + strokeWidth
-            val innerR = outerR + tickLen
-
-            val x1 = centerX + outerR * cos(angleRad)
-            val y1 = centerY + outerR * sin(angleRad)
-            val x2 = centerX + innerR * cos(angleRad)
-            val y2 = centerY + innerR * sin(angleRad)
-
-            drawLine(
-                color = if (isMajor) TextSecondary else TextDim,
-                start = Offset(x1, y1),
-                end = Offset(x2, y2),
-                strokeWidth = if (isMajor) 2f else 1f
-            )
-
-            // Labels for major ticks
-            if (isMajor) {
-                val labelR = innerR + radius * 0.08f
-                val lx = centerX + labelR * cos(angleRad)
-                val ly = centerY + labelR * sin(angleRad)
-                val labelValue = (i * 10).toString()
-                val measured = textMeasurer.measure(
-                    text = labelValue,
-                    style = TextStyle(
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = TextDim
-                    )
-                )
-                drawText(
-                    measured,
-                    topLeft = Offset(
-                        lx - measured.size.width / 2f,
-                        ly - measured.size.height / 2f
-                    )
-                )
-            }
-        }
-
-        // Needle
-        val needleAngle = startAngle + progress * sweepAngle
-        val needleAngleRad = needleAngle * PI.toFloat() / 180f
-        val needleLength = radius * 0.95f
-
-        val needleTipX = centerX + needleLength * cos(needleAngleRad)
-        val needleTipY = centerY + needleLength * sin(needleAngleRad)
-
-        // Needle shadow
-        drawLine(
-            color = Color.Black.copy(alpha = 0.5f),
-            start = Offset(centerX + 2f, centerY + 2f),
-            end = Offset(needleTipX + 2f, needleTipY + 2f),
-            strokeWidth = 3f,
-            cap = StrokeCap.Round
-        )
-        // Needle body
-        drawLine(
-            color = accentColor,
-            start = Offset(centerX, centerY),
-            end = Offset(needleTipX, needleTipY),
-            strokeWidth = 2.5f,
-            cap = StrokeCap.Round
-        )
-
-        // Center pivot
-        drawCircle(color = MachineHighlight, radius = 8f, center = Offset(centerX, centerY))
-        drawCircle(color = accentColor, radius = 4f, center = Offset(centerX, centerY))
-    }
-}
-
-// ── LED BAR GRAPH ────────────────────────────────────────────────────
-
-@Composable
-fun LedBarGraph(
-    dbValue: Float,
-    maxDb: Float,
-    isActive: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val segmentCount = 40
-
-    Canvas(modifier = modifier) {
-        val segWidth = (size.width - (segmentCount - 1) * 2f) / segmentCount
-        val progress = if (isActive) (dbValue / maxDb).coerceIn(0f, 1f) else 0f
-        val litSegments = (progress * segmentCount).toInt()
-
-        for (i in 0 until segmentCount) {
-            val x = i * (segWidth + 2f)
-            val fraction = i.toFloat() / segmentCount
-
-            val segColor = when {
-                fraction < 0.54f -> GaugeGreen
-                fraction < 0.65f -> GaugeYellow
-                fraction < 0.77f -> GaugeOrange
-                else -> GaugeRed
-            }
-
-            val isLit = i < litSegments
-            val color = if (isLit) segColor else segColor.copy(alpha = 0.08f)
-
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(x, 0f),
-                size = Size(segWidth, size.height),
-                cornerRadius = CornerRadius(1f, 1f)
-            )
-        }
-    }
-}
-
-// ── STATUS PANEL ─────────────────────────────────────────────────────
-
-@Composable
-fun StatusPanel(
-    isRecording: Boolean,
-    healthAdvice: com.example.volumereader.health.HealthAdvice,
-    statusColor: Color,
-    pulseAlpha: Float
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MachineSurface, CutCornerShape(4.dp))
-            .border(1.dp, MachineRidge, CutCornerShape(4.dp))
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Status indicator bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "STATUS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextDim
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Canvas(modifier = Modifier.size(8.dp)) {
-                        drawCircle(color = statusColor.copy(alpha = pulseAlpha))
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isRecording) healthAdvice.effect.uppercase() else "STANDBY",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = statusColor.copy(alpha = pulseAlpha)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider(color = MachineRidge, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = if (isRecording) healthAdvice.advice
-                       else "Press START to begin monitoring environmental noise levels.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            if (isRecording) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    ExposureLimitChip("NIOSH", healthAdvice.nioshLimit)
-                    ExposureLimitChip("OSHA", healthAdvice.oshaLimit)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ExposureLimitChip(label: String, value: String) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .background(LcdBackground, CutCornerShape(2.dp))
-            .border(1.dp, MachineBezel, CutCornerShape(2.dp))
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-    ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextDim)
-        Text(text = value, style = MaterialTheme.typography.labelLarge, color = HoloBlue)
-    }
-}
-
-// ── CONTROL BUTTON ───────────────────────────────────────────────────
-
-@Composable
-fun ControlButton(
+private fun ControlButton(
     isRecording: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit
@@ -1106,58 +1223,103 @@ fun ControlButton(
     val borderColor by animateColorAsState(
         targetValue = if (isRecording) HoloRed else HoloBlue,
         animationSpec = tween(300),
-        label = "buttonBorder"
+        label = "btnBorder"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (isRecording) HoloRedBright else HoloBlue,
+        animationSpec = tween(300),
+        label = "btnText"
     )
 
     Button(
         onClick = { if (isRecording) onStop() else onStart() },
         shape = CutCornerShape(6.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isRecording) MachineDark else MachineSurface,
-            contentColor = if (isRecording) HoloRed else HoloBlue
+            containerColor = Color.Transparent,
+            contentColor = textColor
         ),
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = if (isRecording) listOf(Color(0xFF2A0A0A), Color(0xFF1A0606))
+                             else listOf(Color(0xFF0A1A2A), Color(0xFF060E1A))
+                ),
+                shape = CutCornerShape(6.dp)
+            )
             .border(2.dp, borderColor, CutCornerShape(6.dp))
     ) {
         Text(
-            text = if (isRecording) "■  STOP  MONITORING" else "▶  START  MONITORING",
-            style = MaterialTheme.typography.titleMedium
+            text = if (isRecording) "◼  STOP MONITORING" else "▶  ENGAGE MONITOR",
+            style = MaterialTheme.typography.titleLarge,
+            letterSpacing = 2.sp
         )
     }
 }
-
-// ── PERMISSION SCREEN ────────────────────────────────────────────────
 
 @Composable
 fun PermissionScreen(onRequestPermission: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MachineDark),
+            .background(MachineDark)
+            .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Canvas(modifier = Modifier.size(48.dp)) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val path = Path().apply {
+                moveTo(cx, cy - size.height * 0.4f)
+                lineTo(cx + size.width * 0.4f, cy + size.height * 0.35f)
+                lineTo(cx - size.width * 0.4f, cy + size.height * 0.35f)
+                close()
+            }
+            drawPath(path, color = HoloOrange, style = Stroke(width = 3f, join = StrokeJoin.Miter))
+            drawLine(HoloOrange, Offset(cx, cy - 6f), Offset(cx, cy + 4f), strokeWidth = 3f)
+            drawCircle(HoloOrange, radius = 2f, center = Offset(cx, cy + 10f))
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         Text(
-            "MICROPHONE ACCESS REQUIRED",
-            color = HoloBlue,
-            style = MaterialTheme.typography.titleLarge
+            "AUDIO INPUT REQUIRED",
+            color = HoloOrange,
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "This application requires microphone access\nto measure environmental sound levels.",
+            "Microphone access is required for sound pressure level monitoring. Grant the RECORD_AUDIO permission to proceed.",
             color = TextSecondary,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.height(24.dp))
+
+        Spacer(modifier = Modifier.height(32.dp))
+
         Button(
             onClick = onRequestPermission,
             shape = CutCornerShape(6.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = HoloBlue, contentColor = MachineDark)
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = HoloBlue),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(
+                    brush = Brush.verticalGradient(colors = listOf(Color(0xFF0A1A2A), Color(0xFF060E1A))),
+                    shape = CutCornerShape(6.dp)
+                )
+                .border(2.dp, HoloBlue, CutCornerShape(6.dp))
         ) {
-            Text("GRANT PERMISSION", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "AUTHORIZE ACCESS",
+                style = MaterialTheme.typography.titleLarge,
+                letterSpacing = 2.sp
+            )
         }
     }
 }
+
+private fun Float.roundToInt(): Int = kotlin.math.roundToInt(this.toDouble()).toInt()
