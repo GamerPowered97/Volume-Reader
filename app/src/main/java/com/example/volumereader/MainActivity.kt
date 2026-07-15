@@ -354,10 +354,10 @@ fun ArcGauge(
 
         // Draw colored segments
         val segments = listOf(
-            0f to 0.54f to GaugeGreen,     // 0-70 dB
-            0.54f to 0.65f to GaugeYellow,  // 70-85
-            0.65f to 0.77f to GaugeOrange,  // 85-100
-            0.77f to 1f to GaugeRed          // 100-130
+            Pair(0f to 0.54f, GaugeGreen),     // 0-70 dB
+            Pair(0.54f to 0.65f, GaugeYellow),  // 70-85
+            Pair(0.65f to 0.77f, GaugeOrange),  // 85-100
+            Pair(0.77f to 1f, GaugeRed)          // 100-130
         )
 
         val progress = (dbValue / maxDb).coerceIn(0f, 1f)
@@ -715,5 +715,3 @@ fun PermissionScreen(onRequestPermission: () -> Unit) {
     }
 }
 
-// Helper for Pair destructuring in segments
-private infix fun <A, B> Pair<A, B>.to(other: B): Pair<Pair<A, B>, B> = this to other
