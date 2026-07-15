@@ -1834,7 +1834,7 @@ private fun HeaderPanel(onNavigateToSettings: () -> Unit) {
                     labelColor = Color(0xFF16161C)
                 )
                 Text(
-                    text = "MODEL ASM-7700  ·  REV 2.4",
+                    text = "MODEL ASM-7700  ·  REV 2.4.1",
                     color = TextDim,
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,

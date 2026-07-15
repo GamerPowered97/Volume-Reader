@@ -10,8 +10,8 @@ android {
         applicationId = "com.example.volumereader"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.4.0"
+        versionCode = 6
+        versionName = "2.4.1"
     }
 
     signingConfigs {
